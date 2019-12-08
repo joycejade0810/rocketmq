@@ -41,7 +41,7 @@ import org.apache.rocketmq.srvutil.FileWatchService;
 
 public class NamesrvController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
-
+    // Name Server配置
     private final NamesrvConfig namesrvConfig;
 
     private final NettyServerConfig nettyServerConfig;
@@ -73,19 +73,20 @@ public class NamesrvController {
         this.configuration.setStorePathFromConfig(this.namesrvConfig, "configStorePath");
     }
 
+    //根据启动属性创建NamesrvController实例，并初始化该实例，NamesrvController实例为NameServer核心控制器
     public boolean initialize() {
-
+        //加载kv配置
         this.kvConfigManager.load();
-
+        //创建NettyServer网络来处理对象
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
 
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
 
         this.registerProcessor();
-
+        //开启定时任务，此类定时任务统称为心跳检测
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-
+            //NameServer每隔10s扫描一次Broker,移除处于不激活状态的Broker
             @Override
             public void run() {
                 NamesrvController.this.routeInfoManager.scanNotActiveBroker();
@@ -93,7 +94,7 @@ public class NamesrvController {
         }, 5, 10, TimeUnit.SECONDS);
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-
+            //NameServer每隔10分钟打印1次Kv配置
             @Override
             public void run() {
                 NamesrvController.this.kvConfigManager.printAllPeriodically();

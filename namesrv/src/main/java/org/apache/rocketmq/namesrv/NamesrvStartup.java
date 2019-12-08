@@ -78,8 +78,9 @@ public class NamesrvStartup {
             System.exit(-1);
             return null;
         }
-
+        //NameServer的业务配置参数
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
+        //NameServer的网络配置参数
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
         if (commandLine.hasOption('c')) {
@@ -143,6 +144,8 @@ public class NamesrvStartup {
             System.exit(-3);
         }
 
+        //注册JVM钩子函数病启动服务器，以便监听Broker、消息生产者的网络请求
+        //小技巧：如果代码中使用的线程池，一种优雅停机的方式就是注册一个JVM钩子函数，在JVM进程关闭之前，先将线程池关闭，及时释放资源
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
