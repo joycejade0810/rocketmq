@@ -69,7 +69,8 @@ public class MQFaultStrategy {
                             return mq;
                     }
                 }
-
+                //producer 自己拉入黑名单，不去访问上次失败的broker,sendLatencyFaultEnable 此开关开的话，这个机制弥补了nameServer在120s内依旧可能会返回宕机的broker问题
+                //从FaultItem中随机找一个Broker,然后选择一个消费MessageQueue进行绑定
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
