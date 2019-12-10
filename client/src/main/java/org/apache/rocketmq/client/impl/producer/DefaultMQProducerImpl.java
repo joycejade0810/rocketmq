@@ -694,10 +694,17 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             null).setResponseCode(ClientErrorCode.NOT_FOUND_TOPIC_EXCEPTION);
     }
 
+    /**
+     * 获取主题路由信息
+     * @param topic
+     * @return
+     */
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
+        //如果生产者缓存了topic的路由信息，直接返回
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
         if (null == topicPublishInfo || !topicPublishInfo.ok()) {
             this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
+            //如果没有，向nameServer请求
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
         }
@@ -1290,6 +1297,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
 
     /**
+     * 默认同步发送消息方法
      * DEFAULT SYNC -------------------------------------------------------
      */
     public SendResult send(

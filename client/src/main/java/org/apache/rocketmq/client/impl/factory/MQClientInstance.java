@@ -604,12 +604,20 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 消息生产者更新和维护路由信息
+     * @param topic
+     * @param isDefault
+     * @param defaultMQProducer
+     * @return
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
+                    //1.isDefault=true，使用默认主题查询
                     if (isDefault && defaultMQProducer != null) {
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                             1000 * 3);
@@ -621,9 +629,11 @@ public class MQClientInstance {
                             }
                         }
                     } else {
+                        //使用参数topic查询
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
                     if (topicRouteData != null) {
+                        //2.如果路由信息找到，与本地缓存中的路由信息进行对比，判断路由信息是否发生了改变，如果未改变，返回false
                         TopicRouteData old = this.topicRouteTable.get(topic);
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
                         if (!changed) {
@@ -641,6 +651,7 @@ public class MQClientInstance {
 
                             // Update Pub info
                             {
+                                //3.更新MQClientInstance Broker地址缓存表
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
                                 Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
@@ -655,6 +666,8 @@ public class MQClientInstance {
 
                             // Update sub info
                             {
+                                //4.根据topicRouteData中的List<QueueData>转换成topicPublishInfo的List<MessageQueue>列表
+                                //具体实现在topicRouteData2TopicSubscribeInfo，然后更新该MQClientInstance所管辖的所有消息发送关于topic的路由信息。
                                 Set<MessageQueue> subscribeInfo = topicRouteData2TopicSubscribeInfo(topic, topicRouteData);
                                 Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
                                 while (it.hasNext()) {

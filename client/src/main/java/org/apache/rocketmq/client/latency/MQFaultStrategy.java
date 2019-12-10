@@ -22,12 +22,17 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 消息失败策略，延迟实现的门面类
+ */
 public class MQFaultStrategy {
     private final static InternalLogger log = ClientLogger.getLog();
     private final LatencyFaultTolerance<String> latencyFaultTolerance = new LatencyFaultToleranceImpl();
 
     private boolean sendLatencyFaultEnable = false;
 
+    //根据currentLatecy本次消息发送延迟，从latencyMax尾部向前找到第一个比currentLatecy小的索引index,如果没有找到，返回0
+    //然后根据这个索引从notAvailableDuration数组中取出对应的时间，在这个时长内，broker将设置为不可用。
     private long[] latencyMax = {50L, 100L, 550L, 1000L, 2000L, 3000L, 15000L};
     private long[] notAvailableDuration = {0L, 0L, 30000L, 60000L, 120000L, 180000L, 600000L};
 
@@ -55,6 +60,16 @@ public class MQFaultStrategy {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
 
+    /**
+     * 启用Broker故障延迟机制的选择消息队列方法
+     * sendLatencyFaultEnable=true
+     * 1.根据对消息队列进行轮询获取一个消息队列。
+     * 2.验证该消息队列是否可用，latecyFaultTolerance.isAvailable(mq.getBrokerName())是关键
+     * 3.如果返回的MessageQueue可用，移除latencyFaultTolerance关于该topic条目，表明此broker已经恢复
+     * @param tpInfo
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
         if (this.sendLatencyFaultEnable) {
             try {

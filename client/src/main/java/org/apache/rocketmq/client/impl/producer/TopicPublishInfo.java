@@ -24,10 +24,15 @@ import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
 public class TopicPublishInfo {
+    //是否是顺序消息
     private boolean orderTopic = false;
+
     private boolean haveTopicRouterInfo = false;
+    //该主题队列的消息队列
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+    //每选择一次消息队列，该值会自增1，如果Integer.MAX_VALUE,则重置0，用户选择消息队列
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+
     private TopicRouteData topicRouteData;
 
     public boolean isOrderTopic() {
@@ -66,6 +71,15 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 选择消息队列
+     * sendLatencyFaultEnable=false 默认不启用broker故障延迟机制
+     * 在一次消息发送过程中，可能多次执行选择此方法，lastBrokerName就是上次发送失败的broker，第一次为null，此时直接用sendWhichQueue
+     * 自增再获取值，与当前路由表中消息队列个数对比，返回该位置的MessageQueue, 但是由于消息队列是根据broker排序的，如果是broker挂了，
+     * 那么下次选择的同一个broker的messageQueue可能还是发送失败的。
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
             return selectOneMessageQueue();
