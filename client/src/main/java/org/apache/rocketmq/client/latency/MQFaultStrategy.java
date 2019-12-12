@@ -108,6 +108,13 @@ public class MQFaultStrategy {
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 
+    /**
+     *
+     * @param brokerName ：broker名字
+     * @param currentLatency 本次消息发送延迟时间
+     * @param isolation：是否隔离，该参数的含义如果为true，则使用默认时长30s来计算Broker故障规避时长，
+     *                 如果为false，则使用本次消息发送延迟时间来计算故障规避时长。
+     */
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);
@@ -115,6 +122,8 @@ public class MQFaultStrategy {
         }
     }
 
+
+    //计算Broker故障规避时长方法，从latencyMax数组尾部开始寻找，找到第一个比currentLatency小的下标，然后从notAvailableDuration数组中获取需要规避的时长
     private long computeNotAvailableDuration(final long currentLatency) {
         for (int i = latencyMax.length - 1; i >= 0; i--) {
             if (currentLatency >= latencyMax[i])

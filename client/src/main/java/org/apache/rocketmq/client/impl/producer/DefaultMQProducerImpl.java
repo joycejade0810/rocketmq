@@ -139,6 +139,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             });
     }
 
+    //注册钩子函数处理类，并且可以注册多个
     public void registerCheckForbiddenHook(CheckForbiddenHook checkForbiddenHook) {
         this.checkForbiddenHookList.add(checkForbiddenHook);
         log.info("register a new checkForbiddenHook. hookName={}, allHookSize={}", checkForbiddenHook.hookName(),
@@ -718,6 +719,20 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 消息发送API核心入口
+     * @param msg：待发送信息
+     * @param mq：消息将发送到该消息队列上
+     * @param communicationMode：消息发送模式
+     * @param sendCallback：异步消息回调函数
+     * @param topicPublishInfo：主题路由信息
+     * @param timeout：消息发送超时时间
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     private SendResult sendKernelImpl(final Message msg,
         final MessageQueue mq,
         final CommunicationMode communicationMode,
@@ -725,8 +740,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final TopicPublishInfo topicPublishInfo,
         final long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
+        //1.根据MessageQueue获取Broker网络地址
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
+            //如果MessageInstance的brokerAddrTable未缓存该broker的信息，则从nameServer主动更新一下topic信息。如果更新后仍找不到则抛出异常，提示broker不存在。
             tryToFindTopicPublishInfo(mq.getTopic());
             brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         }
@@ -739,6 +756,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             try {
                 //for MessageBatch,ID has been set in the generating process
                 if (!(msg instanceof MessageBatch)) {
+                    //2.为消息分配全局唯一id,如果消息体默认超过4k,会对消息体采用zip压缩，并设置消息的系统标记为MessageSysFlag.COMPRESSED_FLAG
                     MessageClientIDSetter.setUniqID(msg);
                 }
 
@@ -759,7 +777,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 if (tranMsg != null && Boolean.parseBoolean(tranMsg)) {
                     sysFlag |= MessageSysFlag.TRANSACTION_PREPARED_TYPE;
                 }
-
+                //3.如果注册了消息发送钩子函数，则执行消息发送之前的增强逻辑。
                 if (hasCheckForbiddenHook()) {
                     CheckForbiddenContext checkForbiddenContext = new CheckForbiddenContext();
                     checkForbiddenContext.setNameSrvAddr(this.defaultMQProducer.getNamesrvAddr());
@@ -792,20 +810,20 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     }
                     this.executeSendMessageHookBefore(context);
                 }
-
+                //4.构建消息发送请求包
                 SendMessageRequestHeader requestHeader = new SendMessageRequestHeader();
-                requestHeader.setProducerGroup(this.defaultMQProducer.getProducerGroup());
-                requestHeader.setTopic(msg.getTopic());
-                requestHeader.setDefaultTopic(this.defaultMQProducer.getCreateTopicKey());
-                requestHeader.setDefaultTopicQueueNums(this.defaultMQProducer.getDefaultTopicQueueNums());
-                requestHeader.setQueueId(mq.getQueueId());
-                requestHeader.setSysFlag(sysFlag);
-                requestHeader.setBornTimestamp(System.currentTimeMillis());
-                requestHeader.setFlag(msg.getFlag());
-                requestHeader.setProperties(MessageDecoder.messageProperties2String(msg.getProperties()));
-                requestHeader.setReconsumeTimes(0);
+                requestHeader.setProducerGroup(this.defaultMQProducer.getProducerGroup());//生产者组
+                requestHeader.setTopic(msg.getTopic());//主题名称
+                requestHeader.setDefaultTopic(this.defaultMQProducer.getCreateTopicKey());//默认创建主题key
+                requestHeader.setDefaultTopicQueueNums(this.defaultMQProducer.getDefaultTopicQueueNums());//该主题在单个broker默认队列数
+                requestHeader.setQueueId(mq.getQueueId());//队列ID（队列序号）
+                requestHeader.setSysFlag(sysFlag);//消息系统标记
+                requestHeader.setBornTimestamp(System.currentTimeMillis());//消息发送时间
+                requestHeader.setFlag(msg.getFlag());//消息标记
+                requestHeader.setProperties(MessageDecoder.messageProperties2String(msg.getProperties()));//消息扩展属性
+                requestHeader.setReconsumeTimes(0);//消息重试次数
                 requestHeader.setUnitMode(this.isUnitMode());
-                requestHeader.setBatch(msg instanceof MessageBatch);
+                requestHeader.setBatch(msg instanceof MessageBatch);//是否批量消息
                 if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                     String reconsumeTimes = MessageAccessor.getReconsumeTime(msg);
                     if (reconsumeTimes != null) {
@@ -819,7 +837,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         MessageAccessor.clearProperty(msg, MessageConst.PROPERTY_MAX_RECONSUME_TIMES);
                     }
                 }
-
+                //5.根据消息发送方式，同步、异步、单向进行网络传输
                 SendResult sendResult = null;
                 switch (communicationMode) {
                     case ASYNC:
@@ -880,7 +898,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         assert false;
                         break;
                 }
-
+                //6.如果注册了消息发送钩子函数，执行after逻辑。注意就算发送过程中发生RemotingException、MQBrokerException、InterruptedException也执行。
                 if (this.hasSendMessageHook()) {
                     context.setSendResult(sendResult);
                     this.executeSendMessageHookAfter(context);

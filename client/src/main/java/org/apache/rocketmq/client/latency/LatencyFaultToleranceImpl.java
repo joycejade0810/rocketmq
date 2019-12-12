@@ -31,6 +31,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
     @Override
     public void updateFaultItem(final String name, final long currentLatency, final long notAvailableDuration) {
+        //根据broker名字从缓存表中获取失败条目，找到则更新，否则创建
+        //【注意点】1.currentLatency，startTimestamp被volatile修饰
+        //2.startTimestamp为当前系统时间加上需要规避的时长
         FaultItem old = this.faultItemTable.get(name);
         if (null == old) {
             final FaultItem faultItem = new FaultItem(name);
