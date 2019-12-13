@@ -61,33 +61,49 @@ import org.apache.rocketmq.store.index.QueryOffsetResult;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 消息存储实现类
+ */
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    //消息存储配置属性
     private final MessageStoreConfig messageStoreConfig;
-    // CommitLog
+
+    // CommitLog文件的存储实现类
     private final CommitLog commitLog;
 
+    //消息队列存储缓存表
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
+    //消息队列文件ConsumeQueue刷盘线程
     private final FlushConsumeQueueService flushConsumeQueueService;
 
+    //清除CommitLog文件服务
     private final CleanCommitLogService cleanCommitLogService;
 
+    //清除ConsumeQueue文件服务
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
+    //索引文件实现类
     private final IndexService indexService;
 
+    //MappedFile分配服务
     private final AllocateMappedFileService allocateMappedFileService;
 
+    //CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、IndexFile文件
     private final ReputMessageService reputMessageService;
 
+    //存储HA机制
     private final HAService haService;
 
+    //消息堆内存缓存
     private final ScheduleMessageService scheduleMessageService;
 
+    //消息拉取长轮询模式消息达到监听器
     private final StoreStatsService storeStatsService;
 
+    //Broker配置属性
     private final TransientStorePool transientStorePool;
 
     private final RunningFlags runningFlags = new RunningFlags();
@@ -105,6 +121,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private AtomicLong printTimes = new AtomicLong(0);
 
+    //文件转发请求
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -351,7 +368,13 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 消息存储入口
+     * @param msg Message instance to store
+     * @return
+     */
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        //1.如果当前Broker停止工作或者Broker为slave角色或者当前broker没有写权限 则拒绝消息写入
         if (this.shutdown) {
             log.warn("message store has shutdown, so putMessage is forbidden");
             return new PutMessageResult(PutMessageStatus.SERVICE_NOT_AVAILABLE, null);
@@ -369,6 +392,7 @@ public class DefaultMessageStore implements MessageStore {
         if (!this.runningFlags.isWriteable()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
+                //出现这个提示，最有可能是磁盘空间不足了。
                 log.warn("message store is not writeable, so putMessage is forbidden " + this.runningFlags.getFlagBits());
             }
 
@@ -377,6 +401,7 @@ public class DefaultMessageStore implements MessageStore {
             this.printTimes.set(0);
         }
 
+        //如果消息主题长度超过256个字符、消息属性长度超过65536个字符将拒绝该消息写入
         if (msg.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long " + msg.getTopic().length());
             return new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);

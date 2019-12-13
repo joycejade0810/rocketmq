@@ -199,9 +199,9 @@ public class MappedFile extends ReferenceResource {
     public AppendMessageResult appendMessagesInner(final MessageExt messageExt, final AppendMessageCallback cb) {
         assert messageExt != null;
         assert cb != null;
-
+        //获取当前MappedFile写指针currentPos，如果currentPos大于或者等于文件大小，表示已经写满
         int currentPos = this.wrotePosition.get();
-
+        //如果currentPos小于文件大小，通过slice()方法创建一个与MappedFile的共享内存去，并设置position为当前指针。
         if (currentPos < this.fileSize) {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);

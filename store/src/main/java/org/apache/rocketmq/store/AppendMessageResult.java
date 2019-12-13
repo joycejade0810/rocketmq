@@ -21,19 +21,28 @@ package org.apache.rocketmq.store;
  */
 public class AppendMessageResult {
     // Return code
+    /**
+     * 消息追加结果，取值
+     * PUT_OK:追加成功
+     * END_OF_FILE:超过文件大小
+     * MESSAGE_SIZE_EXCEEDED:消息长度超过最大允许长度
+     * PROPERTIES_SIZE_EXCEEDED:消息属性超过最大允许长度
+     * UNKNOW_ERROR:未知异常
+     */
     private AppendMessageStatus status;
-    // Where to start writing
+    // Where to start writing ：消息的物理偏移量
     private long wroteOffset;
     // Write Bytes
     private int wroteBytes;
-    // Message ID
+    // Message ID：消息ID
     private String msgId;
-    // Message storage timestamp
+    // Message storage timestamp:消息存储时间戳
     private long storeTimestamp;
-    // Consume queue's offset(step by one)
+    // Consume queue's offset(step by one)：消息消费队列逻辑偏移量，类似于数组下标
     private long logicsOffset;
+    //当前未使用
     private long pagecacheRT = 0;
-
+    //消息条数，批量消息发送时消息条数
     private int msgNum = 1;
 
     public AppendMessageResult(AppendMessageStatus status) {
