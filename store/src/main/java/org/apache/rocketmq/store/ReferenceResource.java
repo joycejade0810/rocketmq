@@ -40,10 +40,17 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     * 关闭MappedFile
+     * @param intervalForcibly
+     */
     public void shutdown(final long intervalForcibly) {
+        //1.初次调用时 this.available为true，设置为false，并设置初次关闭的时间戳firstShutdownTimestamp为当前时间戳
         if (this.available) {
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
+            //调用release()尝试释放资源，release只有在引用次数小于1的情况下才会释放资源；如果引用次数大于0，对比当前时间与firstShutdownTimestamp，
+            //如果已经超过了其最大拒绝存活期，每执行一次，将引用数减少1000，知道引用数小于0时，通过执行release释放资源
             this.release();
         } else if (this.getRefCount() > 0) {
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
@@ -53,7 +60,11 @@ public abstract class ReferenceResource {
         }
     }
 
+    /**
+     * 释放资源
+     */
     public void release() {
+        //将引用次数-1，如果引用数<=0，则执行cleanup()
         long value = this.refCount.decrementAndGet();
         if (value > 0)
             return;
@@ -70,6 +81,11 @@ public abstract class ReferenceResource {
 
     public abstract boolean cleanup(final long currentRef);
 
+    /**
+     * 判断是否清理完成
+     * 引用次数<=0 并且cleanupOver=true， cleanupOver为true的触发条件是release成功将MappedByteBuffer资源释放。
+     * @return
+     */
     public boolean isCleanupOver() {
         return this.refCount.get() <= 0 && this.cleanupOver;
     }
