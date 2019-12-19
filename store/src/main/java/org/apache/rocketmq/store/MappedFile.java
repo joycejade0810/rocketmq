@@ -57,19 +57,30 @@ public class MappedFile extends ReferenceResource {
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
     //当前文件的提交指针，如果开启transactStorePoolEnable，则数据会存储在TransactionPool中，然后提交到内存映射ByteBuffer中，再刷写到磁盘。
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    //刷写到磁盘指针，该指针之前的数据持久化到磁盘中
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
+    //文件大小
     protected int fileSize;
+    //文件通道
     protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     * 堆内存ByteBuffer,如果不为空，数据首先将存储在该Buffer中，然后提交到MappedFile对应的内存映射文件Buffer.transientStorePoolEnable为true时不为空
      */
     protected ByteBuffer writeBuffer = null;
+    //堆内存池，transientStorePoolEnable为true时启用
     protected TransientStorePool transientStorePool = null;
+    //文件名
     private String fileName;
+    //该文件的初始偏移量
     private long fileFromOffset;
+    //物理文件
     private File file;
+    //物理文件对应的内存映射buffer
     private MappedByteBuffer mappedByteBuffer;
+    //文件最后一次内容写入时间
     private volatile long storeTimestamp = 0;
+    //是否是MappedFileQueue队列中第一个文件
     private boolean firstCreateInQueue = false;
 
     public MappedFile() {
@@ -155,10 +166,19 @@ public class MappedFile extends ReferenceResource {
         this.transientStorePool = transientStorePool;
     }
 
+    /**
+     * MappedFile 初始化
+     * 根据是否开启transientStorePoolEnable存在两种初始化情况，
+     * true表示内容先存储在堆外内存，然后通过Commit线程将数据提交到内存映射Buffer中，在通过Flush线程将内存映射Buffer中的数据持久化到磁盘中。
+     * @param fileName
+     * @param fileSize
+     * @throws IOException
+     */
     private void init(final String fileName, final int fileSize) throws IOException {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.file = new File(fileName);
+        //初始化fileFromOffset为文件名，也就是文件名代表该文件的起始偏移量，通过RandomAccessFile创建读写文件通道，并将文件内容使用NIO的内存映射Buffer将文件映射到内存中
         this.fileFromOffset = Long.parseLong(this.file.getName());
         boolean ok = false;
 
@@ -301,6 +321,11 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    /**
+     * 内存映射文件提交
+     * @param commitLeastPages:本次提交最小的页数，如果待提交数据不满commitLeastPages，则不执行本次提交操作，待下次提交。
+     * @return
+     */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
@@ -320,14 +345,13 @@ public class MappedFile extends ReferenceResource {
             this.transientStorePool.returnBuffer(writeBuffer);
             this.writeBuffer = null;
         }
-
+        //writeBuffer如果为空，直接返回wrotePosition指针，无需执行commit操作，表明commit操作主题是writeBuffer
         return this.committedPosition.get();
     }
 
     protected void commit0(final int commitLeastPages) {
         int writePos = this.wrotePosition.get();
         int lastCommittedPosition = this.committedPosition.get();
-
         if (writePos - this.committedPosition.get() > 0) {
             try {
                 ByteBuffer byteBuffer = writeBuffer.slice();
@@ -357,6 +381,11 @@ public class MappedFile extends ReferenceResource {
         return write > flush;
     }
 
+    /**
+     * 判断是否执行commit操作
+     * 如果文件已满返回true;如果commitLeastPages>0,则比较wrotePosition（当前writeBuffe的写指针）与上一次提交的指针（committedPosition）的差值，
+     * 除以OS_PAGE_SIZE得到当前脏页的数量，如果大于commitLeastPages则返回true,如果commitLeastPages小于0表示只要存在脏页就提交
+     */
     protected boolean isAbleToCommit(final int commitLeastPages) {
         int flush = this.committedPosition.get();
         int write = this.wrotePosition.get();
