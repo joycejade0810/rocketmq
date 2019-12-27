@@ -450,6 +450,8 @@ public class ConsumeQueue {
             return true;
         }
 
+        //2.依次将消息偏移量、消息长度、tag hashcode写入ByteBuffer中，并根据consumeQueueOffset计算ConsumeQueue中的物理地址
+        //将内容追加到ConsumeQueue的内存映射文件中（本操作只追加不刷盘），ConsumeQueue的刷盘方式固定为异步刷盘模式
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);

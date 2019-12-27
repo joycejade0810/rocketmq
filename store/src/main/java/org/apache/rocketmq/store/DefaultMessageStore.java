@@ -194,9 +194,12 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+
+            //1.判断上次退出是否正常。
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            //2.加载延迟队列
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
@@ -1450,6 +1453,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public void putMessagePositionInfo(DispatchRequest dispatchRequest) {
+        //1.根据消息主题与队列ID,先获取对应的ConsumeQueue文件，其逻辑比较简单，因为每一个消息主题对应一个消息消费队列目录，
+        //然后主题下每一个消息队列对应一个文件夹，然后取出文件夹最后的ConsumeQueue文件即可。
         ConsumeQueue cq = this.findConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         cq.putMessagePositionInfoWrapper(dispatchRequest);
     }
@@ -1799,8 +1804,14 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * Broker服务器在启动时会启动ReputMessageService线程，并初始化一个非常关键的参数reputFromOffset，
+     * 如果允许重复转发，reputFromOffset设置为CommitLog的提交指针；
+     * 如果不允许重复转发，reputFromOffset设置为CommitLog的内存中最大偏移量；
+     */
     class ReputMessageService extends ServiceThread {
 
+        //ReputMessageService从哪个物理偏移量开始转发消息给ConsumeQueue和indexFile
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -1848,13 +1859,15 @@ public class DefaultMessageStore implements MessageStore {
                     && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
                     break;
                 }
-
+                //1.返回reputFromOffset偏移量开始的全部有效数据（CommitLog文件）。然后循环读取每一条信息
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
                     try {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            //2.从result返回的ByteBuffer中循环读取消息，一次取一条。创建DispatchRequest，如果消息长度大于0，则调用doDispatch方法。
+                            //最终将分别调用CommitLogDispatchBuildConsumeQueue（构件建消息消费队列）、CommitLogDispatchBuildIndex（构建索引文件）
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
@@ -1911,6 +1924,10 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * ReputMessageService线程每执行一次任务推送休息1毫秒就继续尝试推送消息到消息消费队列和索引文件
+         * 消息消费转发的核心实现在doReput方法中实现
+         */
         @Override
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
