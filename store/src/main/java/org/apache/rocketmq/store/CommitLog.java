@@ -158,9 +158,11 @@ public class CommitLog {
     }
 
     /**
+     * Broker正常停止文件恢复的实现
      * When the normal exit, data recovery, all memory data have been flush
      */
     public void recoverNormally(long maxPhyOffsetOfConsumeQueue) {
+        //1.Broker正常停止再重启，从倒数第三个文件开始恢复，如果不足3个文件，则从第一个文件开始恢复。checkCRCOnRecover参数设置在进行文件恢复时查找消息时是否验证CRC。
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
@@ -171,9 +173,14 @@ public class CommitLog {
 
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+            //2.mappedFileOffset为当前文件已校验通过的offset
+            //processOffset为CommitLog文件已确认的物理偏移量等于mappedFile.getFileFromOffset()+mappedFileOffset
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             while (true) {
+                //3.遍历CommitLog文件，每次取出一条消息，如果查找结果为true并且消息的长度大于0表示消息正确，mappedFileOffset指针向前移动本条消息长度；
+                //如果查找结果为true并且消息的长度等于0，表示已到该文件的末尾，如果还有下一个文件，则重置processOffset mappedFileOffset重复步骤3，否则跳出循环；
+                //如果查找结果为false，表明该文件未填满所有消息，跳出循环，结束遍历文件。
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
                 // Normal data
@@ -204,9 +211,11 @@ public class CommitLog {
                 }
             }
 
+            //4.更新MappedFileQueue的flushedWhere与commiteedWhere指针。
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
+            //5.删除offset之后的所有文件
             this.mappedFileQueue.truncateDirtyFiles(processOffset);
 
             // Clear ConsumeQueue redundant data

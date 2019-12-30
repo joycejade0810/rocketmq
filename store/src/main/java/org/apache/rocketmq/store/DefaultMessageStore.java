@@ -205,12 +205,16 @@ public class DefaultMessageStore implements MessageStore {
             }
 
             // load Commit Log
+            //3.加载CommitLog文件，加载${ROCKET_HOME}/store/commitlog目录下所有文件并按照文件名排序。如果文件大小与配置文件的单个文件大小不一致，将忽略该目录下所有文件，然后创建MappedFile对象。
+            //注意：load方法将wrotePosition、flushedPosition、committedPosition三个指针都设置为文件大小
             result = result && this.commitLog.load();
 
             // load Consume Queue
+            //4.加载消息消费队列，调用loadConsumeQueue，其思路与CommitLog大体一致
             result = result && this.loadConsumeQueue();
 
             if (result) {
+                //5.加载存储检测点，检测点主要记录CommitLog文件、Consumequeue文件、Index索引文件的刷盘点，将在文件刷盘机制中再次提交。
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
@@ -1355,6 +1359,10 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
+    /**
+     * 根据Broker是否是正常停止执行不同的恢复策略
+     * @param lastExitOK
+     */
     private void recover(final boolean lastExitOK) {
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
@@ -1400,6 +1408,10 @@ public class DefaultMessageStore implements MessageStore {
         return maxPhysicOffset;
     }
 
+    /**
+     * 恢复ConsumeQueue文件后，将在CommitLog实例中保存每个消息消费队列当前的存储逻辑偏移量
+     * 这也是消息中不仅存储主题、消息队列ID还存储了消息队列偏移量的关键所在
+     */
     public void recoverTopicQueueTable() {
         HashMap<String/* topic-queueid */, Long/* offset */> table = new HashMap<String, Long>(1024);
         long minPhyOffset = this.commitLog.getMinOffset();
