@@ -1252,6 +1252,9 @@ public class DefaultMessageStore implements MessageStore {
         log.info(fileName + (result ? " create OK" : " already exists"));
     }
 
+    /**
+     * 每隔10s调度一次cleanFilesPeriodically，检测是否需要清除过期文件。执行频率配置：cleanResourceInterval，默认10s
+     */
     private void addScheduleTask() {
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
@@ -1297,7 +1300,12 @@ public class DefaultMessageStore implements MessageStore {
         // }, 1, 1, TimeUnit.HOURS);
     }
 
+    /**
+     * RocketMQ清除过期文件方法：如果非当前写文件在一定时间间隔内没有被再次更新，则认为是过期文件，可以删除，不会关心上面的消息是否全部被消费，默认每个文件过期时间72h
+     * 通过在Broker配置文件中设置fileReservedTime来改变过期时间，单位h
+     */
     private void cleanFilesPeriodically() {
+        //清除commitLog文件和consumeQueue文件
         this.cleanCommitLogService.run();
         this.cleanConsumeQueueService.run();
     }
@@ -1576,15 +1584,25 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * 删除过期文件
+         */
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            //fileReservedTime:文件保留时间，最后一次更新到现在
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+
+            //deletePhysicFilesInterval：删除物理文件的间隔，因为在一次清除过程中，可能需要被删除的文件不止一个，该值指定两次删除文件的间隔时间。
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+
+            //destroyMapedFileIntervalForcibly：在清除过期文件时，如果该文件被其他线程所占用（引用次数大于0，比如读取消息），此时会阻止这次删除任务
+            //同时在第一次试图删除该文件时记录当时时间戳，即表示第一次拒绝删除之后能保留的最大时间，在此时间内，同样可以被拒绝删除，同时会将引用减少1000个
+            //超过该时间间隔后，文件被强制删除
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
-            boolean timeup = this.isTimeToDelete();
-            boolean spacefull = this.isSpaceToDelete();
-            boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
+            boolean timeup = this.isTimeToDelete();//指定删除文件的时间点，默认凌晨4点
+            boolean spacefull = this.isSpaceToDelete();//磁盘空间是否充足，true充足 应该删
+            boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;//预留，手工触发，可以用过调用excuteDeleteFilesManualy方法手工触发删除过期文件。
 
             if (timeup || spacefull || manualDelete) {
 
@@ -1638,12 +1656,15 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isSpaceToDelete() {
+            //DiskMaxUsedSpaceRatio:表示commitlog、consumeQueue文件所在磁盘分区的最大使用量，如果超过该值，则需要立即清除过期文件
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
+            //表示是否立即执行清除过期文件操作
             cleanImmediately = false;
 
             {
                 String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
+                //physicRatio:当前commitlog目录所在的磁盘分区的磁盘使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
@@ -1671,6 +1692,7 @@ public class DefaultMessageStore implements MessageStore {
                 String storePathLogics = StorePathConfigHelper
                     .getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);
+                //diskSpaceWarningLevelRatio:默认0.90，如果磁盘分区使用率超过该阈值，将设置磁盘不可写，会拒绝消息写入。
                 if (logicsRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
@@ -1678,6 +1700,7 @@ public class DefaultMessageStore implements MessageStore {
                     }
 
                     cleanImmediately = true;
+                    //diskSpaceCleanForciblyRatio:默认0.85，如果磁盘分区使用超过该阈值，建议立即执行过期文件删除，当不会拒绝消息写入
                 } else if (logicsRatio > diskSpaceCleanForciblyRatio) {
                     cleanImmediately = true;
                 } else {
