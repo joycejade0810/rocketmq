@@ -19,7 +19,10 @@ package org.apache.rocketmq.client.consumer.rebalance;
 import java.util.List;
 import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
 import org.apache.rocketmq.common.message.MessageQueue;
-
+/**
+ * Cycle average Hashing queue algorithm
+ * 为每个消费者配置固定的消息队列
+ */
 public class AllocateMessageQueueByConfig implements AllocateMessageQueueStrategy {
     private List<MessageQueue> messageQueueList;
 

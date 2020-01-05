@@ -987,7 +987,11 @@ public class MQClientInstance {
         this.rebalanceService.wakeup();
     }
 
+    /**
+     * 多个消费者重新分布负载
+     */
     public void doRebalance() {
+        //遍历所有已注册的消费者，执行doRebalance
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();
             if (impl != null) {

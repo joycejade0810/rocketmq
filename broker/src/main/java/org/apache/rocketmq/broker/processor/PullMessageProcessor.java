@@ -67,6 +67,9 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * Broker端处理消息拉取类
+ */
 public class PullMessageProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -87,6 +90,14 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+    /**
+     * Broker端处理消息拉取入口
+     * @param channel
+     * @param request
+     * @param brokerAllowSuspend
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand processRequest(final Channel channel, RemotingCommand request, boolean brokerAllowSuspend)
         throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
@@ -234,10 +245,12 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 this.brokerController.getConsumerFilterManager());
         }
 
+        //2.调用MessageStore.getMessage()查找消息   3~6步骤在getMessage方法里
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
         if (getMessageResult != null) {
+            //7.根据主从同步延迟，如果从节点数据包含下一次拉取的偏移量，设置下一次拉取任务的brokerId
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
@@ -366,6 +379,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 this.executeConsumeMessageHookBefore(context);
             }
 
+            //8.根据GetMessageResult编码转换成关系
             switch (response.getCode()) {
                 case ResponseCode.SUCCESS:
 
@@ -459,6 +473,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             response.setRemark("store getMessage return null");
         }
 
+        //9.如果commitlog标记可用并且当前节点为主节点，则更新消息消费进度
         boolean storeOffsetEnable = brokerAllowSuspend;
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
         storeOffsetEnable = storeOffsetEnable

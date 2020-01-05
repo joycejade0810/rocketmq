@@ -153,6 +153,8 @@ public class PullAPIWrapper {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        //6.根据BrokerName、BrokerId从MQClientInstance中获取Broker地址，在整个RocketMQ的Broker部署结构中，相同名称Broker构成主从结构，其BrokerId会不一样，
+        //在每次拉取消息后，会给出一个建议，下次从主节点还是从节点拉取
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
@@ -191,6 +193,7 @@ public class PullAPIWrapper {
             requestHeader.setSubVersion(subVersion);
             requestHeader.setExpressionType(expressionType);
 
+            //7.如果消息过滤模式为类过滤，则需要根据主题名称、broker地址找到注册在Broker上的FilterServer地址，从FilterServer上拉取消息，否则从Broker上拉取消息
             String brokerAddr = findBrokerResult.getBrokerAddr();
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
                 brokerAddr = computPullFromWhichFilterServer(mq.getTopic(), brokerAddr);

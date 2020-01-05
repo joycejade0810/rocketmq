@@ -531,31 +531,42 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         long beginTime = this.getSystemClock().now();
-
+        //3.根据主题名称与队列编号获取消息消费队列
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
-        long nextBeginOffset = offset;
-        long minOffset = 0;
-        long maxOffset = 0;
+        long nextBeginOffset = offset;//待查找的队列偏移量
+        long minOffset = 0;//当前消息队列最小偏移量
+        long maxOffset = 0;//当前消息队列最大偏移量
 
         GetMessageResult getResult = new GetMessageResult();
 
-        final long maxOffsetPy = this.commitLog.getMaxOffset();
+        final long maxOffsetPy = this.commitLog.getMaxOffset();//当前commitlog文件最大偏移量
 
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
+            //4.消息偏移量异常情况校对下一次拉取偏移量，必须正常校对拉取偏移量，否则消息消费将出现堆积
             minOffset = consumeQueue.getMinOffsetInQueue();
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
             if (maxOffset == 0) {
+                //表示当前消费队列中没有消息，拉取结果NO_MESSAGE_IN_QUEUE
+                //如果当前Broker为主节点或者offsetCheckInSlave为false，下次拉取偏移量依然为offset
+                //如果当前Broker为从节点，offsetCheckInSlave为true，设置下次拉取偏移量为0
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
             } else if (offset < minOffset) {
+                //表示待拉取消息偏移量小于队列的起始偏移量，拉取结果为OFFSET_TOO_SMALL
+                //如果当前Broker为主节点或者offsetCheckInSlave为false，下次拉取偏移量依然为offset
+                //如果当前Broker为从节点，offsetCheckInSlave为true，设置下次拉取偏移量为minOffset
                 status = GetMessageStatus.OFFSET_TOO_SMALL;
                 nextBeginOffset = nextOffsetCorrection(offset, minOffset);
             } else if (offset == maxOffset) {
+                //表示待拉取消息偏移量等于队列的起始偏移量，拉取结果为OFFSET_OVERFLOW_ONE
+                //下次拉取偏移量依然为offset
                 status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
                 nextBeginOffset = nextOffsetCorrection(offset, offset);
             } else if (offset > maxOffset) {
+                //表示待拉取消息偏移量大于队列的起始偏移量，表示偏移量越界，拉取结果为OFFSET_OVERFLOW_BADLY
+                //根据是否是主节点、从节点，同样校对下次拉取偏移量
                 status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
                 if (0 == minOffset) {
                     nextBeginOffset = nextOffsetCorrection(offset, minOffset);
@@ -563,6 +574,7 @@ public class DefaultMessageStore implements MessageStore {
                     nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
                 }
             } else {
+                //正常情况，从当前offset处尝试拉取32条消息
                 SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
                 if (bufferConsumeQueue != null) {
                     try {
@@ -677,6 +689,7 @@ public class DefaultMessageStore implements MessageStore {
         long elapsedTime = this.getSystemClock().now() - beginTime;
         this.storeStatsService.setGetMessageEntireTimeMax(elapsedTime);
 
+        //6.根据PullRequest填充responseHeader的数据
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
         getResult.setMaxOffset(maxOffset);

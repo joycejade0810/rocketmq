@@ -25,6 +25,12 @@ import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
  * Average Hashing queue algorithm
+ * 分配算法:平均分配
+ * 消费队列q1~q8，消费者c1~c3
+ * 分配结果为：
+ * c1：q1,q2,q3
+ * c2: q4,q5,q6
+ * c3: q7,q8
  */
 public class AllocateMessageQueueAveragely implements AllocateMessageQueueStrategy {
     private final InternalLogger log = ClientLogger.getLog();

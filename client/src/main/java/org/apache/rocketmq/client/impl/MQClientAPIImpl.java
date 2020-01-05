@@ -164,6 +164,9 @@ import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 消息客户端
+ */
 public class MQClientAPIImpl {
 
     private final static InternalLogger log = ClientLogger.getLog();
@@ -754,6 +757,17 @@ public class MQClientAPIImpl {
         return null;
     }
 
+    /**
+     * 消息拉取客户端调用入口
+     * 在接收到服务端响应结构后会调用onSuccess或onException方法
+     * pullCallback对象在pullMessage中创建
+     * @param addr
+     * @param request
+     * @param timeoutMillis
+     * @param pullCallback
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
     private void pullMessageAsync(
         final String addr,
         final RemotingCommand request,
@@ -798,6 +812,7 @@ public class MQClientAPIImpl {
 
     private PullResult processPullResponse(
         final RemotingCommand response) throws MQBrokerException, RemotingCommandException {
+        //1.根据响应结果解码成PullResultExt对象，重点看对应关系
         PullStatus pullStatus = PullStatus.NO_NEW_MSG;
         switch (response.getCode()) {
             case ResponseCode.SUCCESS:

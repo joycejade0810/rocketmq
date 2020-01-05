@@ -27,6 +27,9 @@ import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.utils.ThreadUtils;
 
+/**
+ * 消息拉取服务线程
+ */
 public class PullMessageService extends ServiceThread {
     private final InternalLogger log = ClientLogger.getLog();
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
@@ -43,6 +46,7 @@ public class PullMessageService extends ServiceThread {
         this.mQClientFactory = mQClientFactory;
     }
 
+    //延迟添加和立即添加两种方式将PullRequest放入到pullRequestQueue中
     public void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         if (!isStopped()) {
             this.scheduledExecutorService.schedule(new Runnable() {
@@ -76,6 +80,11 @@ public class PullMessageService extends ServiceThread {
         return scheduledExecutorService;
     }
 
+    /**
+     * 根据消费组名从MQClientInstance中获取消费者内部实现类MQConsumerInner，令人意外的是这里将consumer强制转换为DefaultMQPushConsumerImpl,
+     * 也就是PullMessageService，该线程只为PUSH模式服务，那拉模式如何拉取消息呢？PULL模式，RocketMQ只需要提供拉取消息API即可，具体由应用程序显示调用拉取API
+     * @param pullRequest
+     */
     private void pullMessage(final PullRequest pullRequest) {
         final MQConsumerInner consumer = this.mQClientFactory.selectConsumer(pullRequest.getConsumerGroup());
         if (consumer != null) {
@@ -86,6 +95,12 @@ public class PullMessageService extends ServiceThread {
         }
     }
 
+    /**
+     * 核心方法：
+     *  1.while (!this.isStopped())这是一种通用的设计技巧，stopped生命为volatile,每执行一次业务逻辑检测一下其运行状态，可以通过其他线程将stopped设置为true从而停止该线程
+     *  2.从pullRequestQueue中获取一个PullRequest消息拉取任务，如果pullRequestQueue为空，则线程将阻塞，直到有拉取任务被放入
+     *  3.调用pullMessage方法进行消息拉取。
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");

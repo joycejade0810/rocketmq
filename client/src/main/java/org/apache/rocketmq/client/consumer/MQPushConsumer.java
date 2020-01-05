@@ -23,6 +23,7 @@ import org.apache.rocketmq.client.exception.MQClientException;
 
 /**
  * Push consumer
+ * 推模式的消费者
  */
 public interface MQPushConsumer extends MQConsumer {
     /**
@@ -35,21 +36,25 @@ public interface MQPushConsumer extends MQConsumer {
      */
     void shutdown();
 
-    /**
-     * Register the message listener
-     */
+
     @Deprecated
     void registerMessageListener(MessageListener messageListener);
-
+    /**
+     * Register the message listener
+     * 注册并发消费事件监听器
+     */
     void registerMessageListener(final MessageListenerConcurrently messageListener);
-
+    /**
+     * Register the message listener
+     * 注册顺序消费事件监听器
+     */
     void registerMessageListener(final MessageListenerOrderly messageListener);
 
     /**
      * Subscribe some topic
-     *
+     * 基于主题订阅消息
      * @param subExpression subscription expression.it only support or operation such as "tag1 || tag2 || tag3" <br> if
-     * null or * expression,meaning subscribe
+     * null or * expression,meaning subscribe  ：消息过滤表达式，TAG或SQL92表达式
      * all
      */
     void subscribe(final String topic, final String subExpression) throws MQClientException;
@@ -57,11 +62,11 @@ public interface MQPushConsumer extends MQConsumer {
     /**
      * This method will be removed in the version 5.0.0,because filterServer was removed,and method <code>subscribe(final String topic, final MessageSelector messageSelector)</code>
      * is recommended.
-     *
+     * 基于主题订阅消息，消息过滤方式使用类模式
      * Subscribe some topic
      *
-     * @param fullClassName full class name,must extend org.apache.rocketmq.common.filter. MessageFilter
-     * @param filterClassSource class source code,used UTF-8 file encoding,must be responsible for your code safety
+     * @param fullClassName ：过滤类全路径名   full class name,must extend org.apache.rocketmq.common.filter. MessageFilter
+     * @param filterClassSource ：过滤类代码   class source code,used UTF-8 file encoding,must be responsible for your code safety
      */
     @Deprecated
     void subscribe(final String topic, final String fullClassName,
@@ -88,7 +93,7 @@ public interface MQPushConsumer extends MQConsumer {
 
     /**
      * Unsubscribe consumption some topic
-     *
+     * 取消订阅
      * @param topic message topic
      */
     void unsubscribe(final String topic);
