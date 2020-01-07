@@ -22,18 +22,21 @@ import org.apache.rocketmq.remoting.annotation.CFNotNull;
 import org.apache.rocketmq.remoting.annotation.CFNullable;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 
+/**
+ * ACK消息请求头
+ */
 public class ConsumerSendMsgBackRequestHeader implements CommandCustomHeader {
     @CFNotNull
-    private Long offset;
+    private Long offset;//消息物理偏移量
     @CFNotNull
-    private String group;
+    private String group;//消费组名
     @CFNotNull
-    private Integer delayLevel;
-    private String originMsgId;
-    private String originTopic;
+    private Integer delayLevel;//延迟级别
+    private String originMsgId;//消息id
+    private String originTopic;//消息主题
     @CFNullable
-    private boolean unitMode = false;
-    private Integer maxReconsumeTimes;
+    private boolean unitMode = false;//
+    private Integer maxReconsumeTimes;//最大重新消费次数，默认16此
 
     @Override
     public void checkFields() throws RemotingCommandException {

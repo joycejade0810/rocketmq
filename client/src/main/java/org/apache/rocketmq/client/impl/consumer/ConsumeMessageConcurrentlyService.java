@@ -48,17 +48,20 @@ import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
+/**
+ * 并发消息消费
+ */
 public class ConsumeMessageConcurrentlyService implements ConsumeMessageService {
     private static final InternalLogger log = ClientLogger.getLog();
-    private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
-    private final DefaultMQPushConsumer defaultMQPushConsumer;
-    private final MessageListenerConcurrently messageListener;
-    private final BlockingQueue<Runnable> consumeRequestQueue;
-    private final ThreadPoolExecutor consumeExecutor;
-    private final String consumerGroup;
+    private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;//消息推模式实现类
+    private final DefaultMQPushConsumer defaultMQPushConsumer;//消费者对象
+    private final MessageListenerConcurrently messageListener;//并发消息业务事件类
+    private final BlockingQueue<Runnable> consumeRequestQueue;//消息消费任务队列
+    private final ThreadPoolExecutor consumeExecutor;//消息消费线程池
+    private final String consumerGroup;//消费组
 
-    private final ScheduledExecutorService scheduledExecutorService;
-    private final ScheduledExecutorService cleanExpireMsgExecutors;
+    private final ScheduledExecutorService scheduledExecutorService;//添加消费任务到consumeExecutor延迟调度器
+    private final ScheduledExecutorService cleanExpireMsgExecutors;//定时删除过期消息线程池
 
     public ConsumeMessageConcurrentlyService(DefaultMQPushConsumerImpl defaultMQPushConsumerImpl,
         MessageListenerConcurrently messageListener) {
@@ -197,13 +200,22 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         return result;
     }
 
+    /**
+     * 提交消费请求
+     * @param msgs：消息列表
+     * @param processQueue：消息处理队列
+     * @param messageQueue：消息所属消费队列
+     * @param dispatchToConsume
+     */
     @Override
     public void submitConsumeRequest(
         final List<MessageExt> msgs,
         final ProcessQueue processQueue,
         final MessageQueue messageQueue,
         final boolean dispatchToConsume) {
+        //1.consumeBatchSize消息批次，在这里看来也就是一次消息消费任务ConsumeRequest中包含的消息条数，默认为1
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
+        //msgs.size() <= consumeBatchSize ,直接将拉取到的消息放入ConsumeRequest中，然后将ConsumeRequest提交到消息消费者线程池中，如果提交过程出现拒绝提交异常则延迟5s再提交。
         if (msgs.size() <= consumeBatchSize) {
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
@@ -212,6 +224,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
+            //2.如果拉取的消息条数大于consumeBatchSize，则对拉取消息进行分页，每页consumeBatchSize条消息，创建多个ConsumeRequest任务并提交到消费线程池
             for (int total = 0; total < msgs.size(); ) {
                 List<MessageExt> msgThis = new ArrayList<MessageExt>(consumeBatchSize);
                 for (int i = 0; i < consumeBatchSize; i++, total++) {
@@ -375,16 +388,21 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             return processQueue;
         }
 
+        /**
+         * 封装具体消息消费逻辑
+         */
         @Override
         public void run() {
+            //3.进入具体消息消费时会先检查processQueue是否被丢弃，如果为true，则停止该队列的消费，在进行消息重新负载时如果该消息队列被分配给消费组内其他消费者后，需要dropped设置为true，阻止消费者继续消费不属于自己的消费队列
             if (this.processQueue.isDropped()) {
                 log.info("the message queue not be able to consume, because it's dropped. group={} {}", ConsumeMessageConcurrentlyService.this.consumerGroup, this.messageQueue);
                 return;
             }
-
+            //4.执行消息消费钩子函数ConsumeMessageHook#consumeMessageBefore函数通过registerConsumeMessageHook(hook)方法消息消费执行钩子函数
             MessageListenerConcurrently listener = ConsumeMessageConcurrentlyService.this.messageListener;
             ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
             ConsumeConcurrentlyStatus status = null;
+            //5.恢复重试消息主题名
             defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
 
             ConsumeMessageContext consumeMessageContext = null;

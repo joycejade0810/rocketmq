@@ -21,6 +21,9 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 
+/**
+ * 消息消费处理逻辑
+ */
 public interface ConsumeMessageService {
     void start();
 
@@ -34,8 +37,21 @@ public interface ConsumeMessageService {
 
     int getCorePoolSize();
 
+    /**
+     * 直接消费消息，主要用于通过管理命令收到消费消息
+     * @param msg：消息
+     * @param brokerName：broker名称
+     * @return
+     */
     ConsumeMessageDirectlyResult consumeMessageDirectly(final MessageExt msg, final String brokerName);
 
+    /**
+     * 提交消息消费
+     * @param msgs：消息列表
+     * @param processQueue：消息处理队列
+     * @param messageQueue：消息所属消费队列
+     * @param dispathToConsume：是否转发消费线程池，并发消费时忽略该参数
+     */
     void submitConsumeRequest(
         final List<MessageExt> msgs,
         final ProcessQueue processQueue,
