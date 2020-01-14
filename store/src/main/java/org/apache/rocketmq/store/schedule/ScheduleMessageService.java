@@ -48,6 +48,10 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
  * 定时消息实现类
  * 该类实例在DefaultMessageService中创建，通过load方法加载并调用start方法进行启动。
  * 调用顺序 构造方法->load()->start()方法
+ *
+ * 定时消息的第一个设计关键点是，定时消息单独一个主题，该主题下队列数量等于MessageStoreConfig#messageDelayLevel配置的延迟级别数量，其对应关系为queueId等于延迟级别减1.
+ * ScheduleMessageService为每一个延迟级别创建一个定时Timer根据延迟级别对应的延迟时间进行延迟调度。
+ * 在消息发送时，如果消息的延迟级别delayLevel大于0，将消息的原主题名称、队列ID存入消息的属性中，然后改变消息主题、队列与延迟主题与延迟主题所属队列，消息将最终转发到延迟队列的消费队列
  */
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -129,6 +133,8 @@ public class ScheduleMessageService extends ConfigManager {
     public void start() {
         if (started.compareAndSet(false, true)) {
             this.timer = new Timer("ScheduleMessageTimerThread", true);
+            //1.根据延迟队列创建定时任务，遍历延迟级别，根据延迟级别level从offsetTable中获取消费队列的消费进度，如果不存在，则使用0。也就是说每一个延迟级别对应一个消息消费队列。
+            //然后创建定时任务，每一个定时任务第一次启动时默认延迟1s先执行一次定时任务，第二次调度开始才使用响应的延迟时间。延迟级别与消息消费队列的映射关系为：消息队列ID=延迟级别-1
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
                 Long timeDelay = entry.getValue();
@@ -141,7 +147,7 @@ public class ScheduleMessageService extends ConfigManager {
                     this.timer.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME);
                 }
             }
-
+            //2.创建定时任务，每隔10s持久化一次延迟队列的消息消费进度（延迟消息调进度），持久化频率可以通过FlushDelayOffsetInterval设置
             this.timer.scheduleAtFixedRate(new TimerTask() {
 
                 @Override
@@ -242,6 +248,9 @@ public class ScheduleMessageService extends ConfigManager {
         return true;
     }
 
+    /**
+     * 定时调度任务的实现类
+     */
     class DeliverDelayedMessageTimerTask extends TimerTask {
         private final int delayLevel;
         private final long offset;
@@ -280,7 +289,11 @@ public class ScheduleMessageService extends ConfigManager {
             return result;
         }
 
+        /**
+         * 定时调度任务核心实现
+         */
         public void executeOnTimeup() {
+            //1.根据队列ID与延迟主题查找消息消费队列，如果未找到，说明目前并不存在该延时级别的消息，忽略本次任务，根据延时级别创建下一次调度任务即可。
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(SCHEDULE_TOPIC,
                     delayLevel2QueueId(delayLevel));
@@ -288,9 +301,11 @@ public class ScheduleMessageService extends ConfigManager {
             long failScheduleOffset = offset;
 
             if (cq != null) {
+                //2.根据offset从消息消费队列中获取当前队列中所有有效消息。如果未找到，则更新一下延迟队列定时拉取进度并创建定时任务待下一次继续尝试。
                 SelectMappedBufferResult bufferCQ = cq.getIndexBuffer(this.offset);
                 if (bufferCQ != null) {
                     try {
+                        //3.遍历ConsumeQueue,每一个标准ConsumeQueue条目为20个字节。解析出消息的物理偏移量、消息长度、消息tag hashcode,为从commitlog加载具体消息做准备
                         long nextOffset = offset;
                         int i = 0;
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
@@ -319,13 +334,16 @@ public class ScheduleMessageService extends ConfigManager {
                             long countdown = deliverTimestamp - now;
 
                             if (countdown <= 0) {
+                                //4.根据消息物理偏移量与消息大小从commitlog文件中查找消息。如果未找到消息，打印错误日志，根据延迟时间创建下一个定时器
                                 MessageExt msgExt =
                                     ScheduleMessageService.this.defaultMessageStore.lookMessageByOffset(
                                         offsetPy, sizePy);
 
                                 if (msgExt != null) {
                                     try {
+                                        //5.根据消息重新构建新的消息对象，清除消息的延迟级别属性(delayLevel)、并恢复消息原先的消息主题与消息消费队列，消息的消费次数reconsumeTimes并不会丢失。
                                         MessageExtBrokerInner msgInner = this.messageTimeup(msgExt);
+                                        //6.将消息再次存入到commitlog，并转发到主题对应的消息队列上，供消费者再次消费
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.writeMessageStore
                                                 .putMessage(msgInner);
