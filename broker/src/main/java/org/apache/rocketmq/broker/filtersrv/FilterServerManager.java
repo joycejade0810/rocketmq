@@ -50,6 +50,10 @@ public class FilterServerManager {
         this.brokerController = brokerController;
     }
 
+    /**
+     * FilterServer与Broker通过心跳维持FilterServer在Broker端的注册，同样在Broker每隔10s扫描一下该注册表，如果30s内未收到FilterServer的注册信息，就关闭连接
+     * Broker为避免Broker端FilterServer的异常退出导致进程越来越少，同样提供一个定时任务每30s检测一下当前存活的FilterServer进程个数，如果小于配置，则自动创建FilterServer进程
+     */
     public void start() {
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
@@ -64,7 +68,11 @@ public class FilterServerManager {
         }, 1000 * 5, 1000 * 30, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 创建filterServer
+     */
     public void createFilterServer() {
+        //1.读取配置文件中的属性FilterServerNums,如果当前运行的进程数小于，则构建shell命令并调用
         int more =
             this.brokerController.getBrokerConfig().getFilterServerNums() - this.filterServerTable.size();
         String cmd = this.buildStartCommand();
@@ -73,6 +81,7 @@ public class FilterServerManager {
         }
     }
 
+    //2.构建启动命令
     private String buildStartCommand() {
         String config = "";
         if (BrokerStartup.configFile != null) {
@@ -145,7 +154,9 @@ public class FilterServerManager {
     }
 
     static class FilterServerInfo {
+        //filterServer服务器地址
         private String filterServerAddr;
+        //filterServer上次发送心跳包时间
         private long lastUpdateTimestamp;
 
         public String getFilterServerAddr() {

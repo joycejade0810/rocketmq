@@ -25,6 +25,7 @@ public class FilterServerUtil {
         Process process = null;
         try {
             String[] cmdArray = splitShellString(shellString);
+            //3.利用Runtime.getRuntime()直接指向shell脚本，这里主要展示下java调用shell脚本的实现方法。
             process = Runtime.getRuntime().exec(cmdArray);
             process.waitFor();
             log.info("CallShell: <{}> OK", shellString);
