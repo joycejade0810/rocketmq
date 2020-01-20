@@ -235,6 +235,8 @@ public class PullAPIWrapper {
 
     private String computPullFromWhichFilterServer(final String topic, final String brokerAddr)
         throws MQClientException {
+        //获取该消息主题的路由信息，从路由信息中获取Broker对应的FilterServer列表，如果不为空则随机从FilterServer列表中选择一个，发送拉取消息请求至相应的FilterServer上，
+        // 由于FilterServer使用DefaultMQPullConsumer消费者根据消息消费者的拉取任务将拉取请求转发给Broker，然后对返回的消息执行消息过滤逻辑，将匹配的消息返回给消息消费者。
         ConcurrentMap<String, TopicRouteData> topicRouteTable = this.mQClientFactory.getTopicRouteTable();
         if (topicRouteTable != null) {
             TopicRouteData topicRouteData = topicRouteTable.get(topic);

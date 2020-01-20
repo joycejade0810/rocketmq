@@ -775,6 +775,8 @@ public class MQClientInstance {
                 RemotingHelper.exceptionSimpleDesc(e1));
         }
 
+        //3.根据订阅的主题获取该主题的路由信息，如果该主题路由信息中的FilterServer缓存表不为空，则需要将过滤类发送到FilterServer上。
+        //TopicRouteData中filterServerTable缓存表的存储格式为HashMap，FilterServer是依附于Broker消息服务器的，多个FilterServer共同从Broker拉取消息
         TopicRouteData topicRouteData = this.topicRouteTable.get(topic);
         if (topicRouteData != null
             && topicRouteData.getFilterServerTable() != null && !topicRouteData.getFilterServerTable().isEmpty()) {
@@ -782,8 +784,10 @@ public class MQClientInstance {
             while (it.hasNext()) {
                 Entry<String, List<String>> next = it.next();
                 List<String> value = next.getValue();
+                //4.遍历主题路由表中filterServerTable，向缓存中所有的FilterServer上传消息过滤代码
                 for (final String fsAddr : value) {
                     try {
+                        //5.FilterServer端处理FilterClass上传并将其源码编译的实现为FilterClassManager
                         this.mQClientAPIImpl.registerMessageFilterClass(fsAddr, consumerGroup, topic, fullClassName, classCRC, classBody,
                             5000);
 
