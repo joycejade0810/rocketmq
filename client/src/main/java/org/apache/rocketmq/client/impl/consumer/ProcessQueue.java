@@ -298,7 +298,8 @@ public class ProcessQueue {
 
     /**
      * 提交
-     * 将consumingMsgOrderlyTreeMap中的消息清除，表示成功处理了这批消息
+     * 就是将该批消息从ProcessQueue中移除，维护msgCount并获取消息消费偏移量offset，然后将该批消息从consumingMsgOrderlyTreeMap中的消息清除，
+     * 并返回待保存的消息消费进度(offset+1)，从中可以看出offset表示消息消费队列的逻辑偏移量，类似于数组的下标，代表第n个ConsumeQueue条目
      * @return
      */
     public long commit() {
