@@ -220,11 +220,17 @@ public class PullAPIWrapper {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
+    /**
+     * 根据消息消费队列获取brokerId
+     * @param mq
+     * @return
+     */
     public long recalculatePullFromWhichNode(final MessageQueue mq) {
         if (this.isConnectBrokerByUser()) {
             return this.defaultBrokerId;
         }
 
+//        从pullFromWhichNodeTable缓存表中获取该消息消费队列的brokerId，如果找到，则返回，否则返回brokerName的主节点。
         AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);
         if (suggest != null) {
             return suggest.get();
