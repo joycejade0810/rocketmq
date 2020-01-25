@@ -191,6 +191,15 @@ public class TransactionalMessageBridge {
         return foundList;
     }
 
+    /**
+     * 这里是事务消息与非事务消息发送流程的主要区别，乳沟是事务消息，则备份消息的原主题与原消息消费队列，
+     * 然后将主题变更为PROPERTY_REAL_TOPIC，消费队列变更为0，
+     * 然后消息按照普通消息存储在commitlog文件进而转发到对应消息消费队列中。
+     * 也就是说，事务消息在未提交之前并不会存入消息原有主题，自然也不会被消费者消费。
+     * 变更主题后，RocketMQ通常会采用定时任务（单独线程）去消费该主题，进而被消费者消费。
+     * @param messageInner
+     * @return
+     */
     public PutMessageResult putHalfMessage(MessageExtBrokerInner messageInner) {
         return store.putMessage(parseHalfMessageInner(messageInner));
     }

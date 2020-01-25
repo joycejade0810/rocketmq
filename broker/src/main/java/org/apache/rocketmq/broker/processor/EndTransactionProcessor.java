@@ -39,6 +39,7 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.BrokerRole;
 
 /**
+ * Broker服务端的结束事务处理器
  * EndTransaction processor: process commit and rollback message
  */
 public class EndTransactionProcessor implements NettyRequestProcessor {
@@ -121,19 +122,25 @@ public class EndTransactionProcessor implements NettyRequestProcessor {
                     return null;
             }
         }
+//        如果结束事务动作为提交事务，则执行提交事务逻辑，其关键实现如下：
         OperationResult result = new OperationResult();
         if (MessageSysFlag.TRANSACTION_COMMIT_TYPE == requestHeader.getCommitOrRollback()) {
+//            1)首先从结束事务请求命令中获取消息的物理偏移量 commitMessage此方法实现
             result = this.brokerController.getTransactionalMessageService().commitMessage(requestHeader);
             if (result.getResponseCode() == ResponseCode.SUCCESS) {
                 RemotingCommand res = checkPrepareMessage(result.getPrepareMessage(), requestHeader);
                 if (res.getCode() == ResponseCode.SUCCESS) {
+//                    2)然后恢复消息的主题、消费队列，构建新的消息对象，由endMessageTransaction方法实现。
                     MessageExtBrokerInner msgInner = endMessageTransaction(result.getPrepareMessage());
                     msgInner.setSysFlag(MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), requestHeader.getCommitOrRollback()));
                     msgInner.setQueueOffset(requestHeader.getTranStateTableOffset());
                     msgInner.setPreparedTransactionOffset(requestHeader.getCommitLogOffset());
                     msgInner.setStoreTimestamp(result.getPrepareMessage().getStoreTimestamp());
+//                    3)然后将消息再次存储到commitlog文件中，此时的消息主题则为业务方发送的消息，将被转发到对应的消息消费队列，由sendFinalMessage实现
                     RemotingCommand sendResult = sendFinalMessage(msgInner);
                     if (sendResult.getCode() == ResponseCode.SUCCESS) {
+//                        4)消息存储后，删除prepare消息，其实现方法并不是真正删除，而是将prepare消息存储到RMQ_SYS_TRANS_OP_TOPIC主题中，表示该事务消息已经处理过，为未处理的事务进行事务回查提供查找依据
+//                        事务的回滚与提交唯一的差别是无须将消息恢复原主题，直接删除prepare消息即可，同样是将预处理消息存储到RMQ_SYS_TRANS_OP_TOPIC主题中，表示已处理过该消息。
                         this.brokerController.getTransactionalMessageService().deletePrepareMessage(result.getPrepareMessage());
                     }
                     return sendResult;

@@ -15,6 +15,9 @@
  * limitations under the License.
  */
 package org.apache.rocketmq.client.producer;
+/**
+ * RocketMQ事务消息发送者
+ */
 
 import java.util.concurrent.ExecutorService;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -23,11 +26,14 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.remoting.RPCHook;
 
 public class TransactionMQProducer extends DefaultMQProducer {
+//    事务监听器，主要定义实现本地事务状态执行、本地事务状态回查两个接口
     private TransactionCheckListener transactionCheckListener;
+//
     private int checkThreadPoolMinSize = 1;
     private int checkThreadPoolMaxSize = 1;
     private int checkRequestHoldMax = 2000;
 
+//    事务状态回查异步执行线程池
     private ExecutorService executorService;
 
     private TransactionListener transactionListener;
